@@ -1,3 +1,5 @@
 /.venv/
 /test/songs.json
 /test/selenium_data/
+/songs.json
+/selenium_data/
