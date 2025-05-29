@@ -13,6 +13,7 @@ class VideoServer:
         self.current_video = {"url": "https://www.youtube.com/embed/7WABxk9DAuw?autoplay=1"}
         self.subscribers = []
         self._setup_routes()
+        self.server_thread = threading.Thread(target=self._run_flask, daemon=True)
 
     def _setup_routes(self):
         # Define all website paths
@@ -36,7 +37,14 @@ class VideoServer:
         for sub in self.subscribers:
             sub.put(self.current_video["url"])
 
+    def _run_flask(self):
+        self.app.run(host=self.host, port=self.port, debug=False, threaded=True)
+
     def set_video(self, youtube_url):
+        # Check if the server is alive
+        if not self.server_thread.is_alive():
+            raise RuntimeError('No server is running. Please start it first with VideoServer.start()')
+
         # Change the video of all clients by passing a valid YouTube URL to this function
         if youtube_url:
             try:
@@ -50,10 +58,7 @@ class VideoServer:
 
     def start(self):
         # Start the server in the background
-        def run_flask():
-            self.app.run(host=self.host, port=self.port, debug=False, threaded=True)
-
-        threading.Thread(target=run_flask, daemon=True).start()
+        self.server_thread.start()
         print(f"[VideoServer] Server started at http://{self.host}:{self.port}")
 
     """
