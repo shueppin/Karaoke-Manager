@@ -8,6 +8,7 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 
+# Using selenium~=4.33.0
 from selenium import webdriver
 from selenium.webdriver.edge.options import Options
 

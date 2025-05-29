@@ -1,6 +1,7 @@
-# Karaoke_Player
+# Karaoke Manager
 
 This is a Python tkinter GUI which displays YouTube videos with the click of a button in a browser window using a local flask webserver.  
+It is originally designed for Karaoke videos, but it works with very much any YouTube video.
 
 ## Usage
 1. Install the program via the installer cmd file or by downloading Python 3.12, downloading the requirements and downloading the main.py file.

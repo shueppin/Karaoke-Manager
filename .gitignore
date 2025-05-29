@@ -1,5 +1,6 @@
 /.venv/
-/test/songs.json
-/test/selenium_data/
+/.idea/
 /songs.json
-/selenium_data/
+/Old version/selenium_data/
+/Test scripts/Selenium Automation/selenium_data/
+/Test scripts/GUI/songs.json

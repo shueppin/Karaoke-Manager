@@ -146,7 +146,7 @@ class KaraokeApp:
         self.countdown_thread = threading.Thread()
 
         self.basic_font = ("Segoe UI", 11)
-        self.re_pattern = re.compile(r'(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+')
+        self.re_pattern = re.compile(r'(https?://)?(www\.)?(youtube\.com)/.+')
 
         # Load the song_list from the JSON
         self.load_songs()
