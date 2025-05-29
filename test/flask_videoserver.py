@@ -49,7 +49,7 @@ class VideoServer:
         if youtube_url:
             try:
                 embed_url = youtube_url.replace("watch?v=", "embed/").split("&")[0]
-                embed_url += "?autoplay=1"
+                embed_url += "?autoplay=1&cc_lang_policy=0&iv_load_policy=3"  # Remove the subtitles and make the video autoplay if possible
                 self.current_video["url"] = embed_url
                 self._notify_clients()
                 print(f"[VideoServer] Video changed to: {embed_url}")

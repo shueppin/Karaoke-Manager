@@ -7,8 +7,53 @@ import threading
 import tkinter as tk
 from tkinter import messagebox
 
-from flask import Flask, render_template, Response
+from flask import Flask, render_template_string, Response
 from queue import Queue
+import webbrowser
+
+
+# Define as string so no extra file is needed
+HTML_TEMPLATE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fullscreen Video Viewer</title>
+    <style>
+        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            background-color: black;
+        }
+        iframe {
+            width: 100vw;
+            height: 100vh;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <iframe id="video"
+        src="{{ video_url }}"
+        allowfullscreen
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        referrerpolicy="strict-origin-when-cross-origin"
+        title="YouTube Video">
+    </iframe>
+
+    <script>
+        const videoFrame = document.getElementById("video");
+        const evtSource = new EventSource("/video-stream");
+
+        evtSource.onmessage = function(event) {
+            if (videoFrame.src !== event.data) {
+                videoFrame.src = event.data;
+            }
+        };
+    </script>
+</body>
+</html>
+"""
 
 
 SONG_FILE = "songs.json"
@@ -29,7 +74,7 @@ class VideoServer:
         # Define all website paths
         @self.app.route('/')
         def index():
-            return render_template('index.html', video_url=self.current_video["url"])
+            return render_template_string(HTML_TEMPLATE, video_url=self.current_video["url"])
 
         # Video Stream Path is responsible for providing the communication with the clients
         @self.app.route('/video-stream')
@@ -59,7 +104,7 @@ class VideoServer:
         if youtube_url:
             try:
                 embed_url = youtube_url.replace("watch?v=", "embed/").split("&")[0]
-                embed_url += "?autoplay=1"
+                embed_url += "?autoplay=1&cc_lang_policy=0&iv_load_policy=3"  # Remove the subtitles and make the video autoplay if possible
                 self.current_video["url"] = embed_url
                 self._notify_clients()
                 print(f"[VideoServer] Video changed to: {embed_url}")
@@ -69,7 +114,9 @@ class VideoServer:
     def start(self):
         # Start the server in the background
         self.server_thread.start()
-        print(f"[VideoServer] Server started at http://{self.host}:{self.port}")
+        server_url = f"http://{self.host}:{self.port}"
+        print(f"[VideoServer] Server started at {server_url}")
+        return server_url
 
     """
     Stopping the server is only possible by exiting the whole script.
@@ -80,7 +127,8 @@ class KaraokeApp:
     def __init__(self):
         # Initialize the YouTube Player
         self.video_server = VideoServer()
-        self.video_server.start()
+        server_url = self.video_server.start()
+        webbrowser.open(server_url)  # Open the URL of the server in the webbrowser
 
         self.root = tk.Tk()
         self.root.title("Karaoke Manager")
@@ -336,7 +384,7 @@ class KaraokeApp:
 
     def on_closing(self):
         # Show a confirmation dialog
-        if messagebox.askyesno("Quit", "Do you really want to quit? \n(This window will close shortly after the browser is closed)"):
+        if messagebox.askyesno("Quit", "Do you really want to quit? \n(This window will also stop the webserver)"):
             self.root.destroy()  # Close the window
             exit()  # Stops the server
 
