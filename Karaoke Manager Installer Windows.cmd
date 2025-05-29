@@ -25,9 +25,9 @@ set "python_zip_download_url=https://www.python.org/ftp/python/3.12.10/python-3.
 set "requirements_file_url=https://raw.githubusercontent.com/shueppin/Karaoke-Manager/refs/heads/main/requirements.txt"
 set "initial_file_url=https://raw.githubusercontent.com/shueppin/Karaoke-Manager/refs/heads/main/main.py"
 set "shortcut_icon_url=https://raw.githubusercontent.com/shueppin/Karaoke-Manager/refs/heads/main/icon.ico"
-set "show_console=..."
-set "arguments=..."
-set "create_shortcut_in_programs=..."
+set "show_console=False"
+set "arguments="
+set "create_shortcut_in_programs=True"
 
 
 :: Different colors:
