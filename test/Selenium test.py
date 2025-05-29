@@ -32,7 +32,7 @@ class YouTubeWebdriver:
         if maximize:
             self.driver.maximize_window()
 
-    def start_youtube_video(self, youtube_video_link, countdown=5):
+    def start_youtube_video(self, youtube_video_link, countdown=True):
         # Change the URL in the same tab
         self.driver.get(youtube_video_link)  # New URL
 
@@ -58,11 +58,15 @@ class YouTubeWebdriver:
             }, 100);
         """)
 
-        # Start a countdown
-        for i in range(countdown, 0, -1):
-            print(f'Starting video in {i} seconds')
-            sleep(1)
+        if countdown:
+            # Start a countdown
+            for i in range(5, 0, -1):
+                print(f'Starting video in {i} seconds')
+                sleep(1)
 
+            self.click_fullscreen()
+
+    def click_fullscreen(self):
         # Click the fullscreen button to start the video
         fullscreen_button = self.driver.find_element("css selector", ".ytp-fullscreen-button")
         fullscreen_button.click()

@@ -15,6 +15,10 @@ class KaraokeApp:
         self.root.title("Karaoke Manager")
         self.root.geometry("800x600")
 
+        # Set up the protocol for the window close event
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+
+        # Define some basic variables
         self.song_list = []
         self.current_song_data = None
         self.current_song_start_time = None
@@ -252,6 +256,11 @@ class KaraokeApp:
 
         self.save_songs()
         self.update_song_list()
+
+    def on_closing(self):
+        # Show a confirmation dialog
+        if messagebox.askyesno("Quit", "Do you really want to quit?"):
+            self.root.destroy()  # Close the window
 
 
 if __name__ == "__main__":
