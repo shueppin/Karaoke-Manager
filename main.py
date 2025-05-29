@@ -3,6 +3,7 @@ import re
 from datetime import datetime
 from os import path, mkdir
 from time import sleep
+import threading
 
 import tkinter as tk
 from tkinter import messagebox
@@ -26,6 +27,7 @@ class YouTubeWebdriver:
         # Set the options to use this custom data directory
         options = Options()
         options.add_argument(f"user-data-dir={selenium_data_dir}")
+        options.add_argument("--autoplay-policy=no-user-gesture-required")
 
         # Initialize the webdriver
         if webdriver_type == 'Edge':
@@ -41,7 +43,7 @@ class YouTubeWebdriver:
         if maximize:
             self.driver.maximize_window()
 
-    def start_youtube_video(self, youtube_video_link, countdown=True):
+    def start_youtube_video(self, youtube_video_link):
         # Change the URL in the same tab
         self.driver.get(youtube_video_link)  # New URL
 
@@ -53,6 +55,7 @@ class YouTubeWebdriver:
             // Pause the video incase a user interaction has happened already
             const video = document.querySelector('video');
                 if (video) {
+                    video.mute = true
                     video.pause();
                     video.autoplay = false;
                     video.removeAttribute('autoplay');
@@ -67,14 +70,6 @@ class YouTubeWebdriver:
             }, 100);
         """)
 
-        if countdown:
-            # Start a countdown
-            for i in range(5, 0, -1):
-                print(f'Starting video in {i} seconds')
-                sleep(1)
-
-            self.click_fullscreen()
-
     def click_fullscreen(self):
         # Click the fullscreen button to start the video
         fullscreen_button = self.driver.find_element("css selector", ".ytp-fullscreen-button")
@@ -86,6 +81,9 @@ class YouTubeWebdriver:
 
 class KaraokeApp:
     def __init__(self):
+        # Initialize the YouTube Player
+        self.youtube_player = YouTubeWebdriver()
+
         self.root = tk.Tk()
         self.root.title("Karaoke Manager")
         self.root.geometry("800x600")
@@ -98,6 +96,8 @@ class KaraokeApp:
         self.current_song_data = None
         self.current_song_start_time = None
         self.edit_mode = False
+        self.countdown_stop_event = threading.Event()  # This variable tells the script to try and stop the countdown
+        self.countdown_thread = threading.Thread()
 
         self.basic_font = ("Segoe UI", 11)
         self.re_pattern = re.compile(r'(https?://)?(www\.)?(youtube\.com|youtu\.be)/.+')
@@ -109,8 +109,9 @@ class KaraokeApp:
         self.top_frame = tk.Frame(self.root)
         self.top_frame.pack(pady=10)
 
-        self.play_button = tk.Button(self.top_frame, text="Play Next Song", font=("Segoe UI", 15), command=self.play_next_song)
-        self.play_button.pack(side=tk.LEFT, padx=15)
+        # This is the button which plays the next song or stops the countdown when a new song is started.
+        self.play_and_stop_countdown_button = tk.Button(self.top_frame, text="Play Next Song", font=("Segoe UI", 15), command=self.play_and_stop_countdown_button_action)
+        self.play_and_stop_countdown_button.pack(side=tk.LEFT, padx=15)
 
         self.add_button = tk.Button(self.top_frame, text="Add New Song", font=("Segoe UI", 15), command=self.add_song)
         self.add_button.pack(side=tk.LEFT, padx=15)
@@ -129,6 +130,7 @@ class KaraokeApp:
         # Create all the widgets for all the song_list
         self.update_song_list()
 
+        # Main tkinter interaction loop
         self.root.mainloop()
 
     def load_songs(self):
@@ -297,11 +299,31 @@ class KaraokeApp:
                 return index
         return None
 
-    def update_current_song_label(self):
+    def update_current_song_label(self, countdown=0):
+        if countdown:
+            text = f'"{self.current_song_data['name']}" by "{self.current_song_data['author']}" (Singer: {self.current_song_data['person']}) \nStarting in {countdown} seconds.'
+        else:
+            text = f'"{self.current_song_data['name']}" by "{self.current_song_data['author']}" (Singer: {self.current_song_data['person']}) \nStarted at: {self.current_song_start_time}'
+
         self.current_song_label.config(
-            text=f"Now Playing: {self.current_song_data['name']} by {self.current_song_data['author']} (Singer: {self.current_song_data['person']})\nStarted at: {self.current_song_start_time}",
+            text=text,
             fg="green"
         )
+
+    def play_and_stop_countdown_button_action(self):
+        # If the Script is counting down or starting the Video it should try to stop this from happening.
+        if self.countdown_thread.is_alive():
+            # If the thread is already being stopped then just show a message
+            if self.countdown_stop_event.is_set():
+                messagebox.showinfo("Info", "Wait shortly between actions.")
+                return
+
+            # Otherwise try to stop the thread by setting the stop event
+            self.countdown_stop_event.set()
+
+        # If there is no countdown or the video is not being started then just play the next song
+        else:
+            self.play_next_song()
 
     def play_next_song(self):
         # When the list is empty, show an information message
@@ -323,21 +345,55 @@ class KaraokeApp:
                 else:
                     self.song_list.append(self.song_list.pop(current_index))
 
-        # If there are any songs in the list set the current song to the newest one and display this
+        # If there are any songs in the list set the current song to the newest one, set the new button text and start the countdown
         if self.song_list:
             self.current_song_data = self.song_list[0]
-            self.current_song_start_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            self.update_current_song_label()
+            self.play_and_stop_countdown_button.config(text='Stop Countdown')
+            self.countdown_thread = threading.Thread(target=self.start_video_with_countdown)  # Set the thread that starts the countdown for the video
+            self.countdown_thread.start()
 
         self.save_songs()
         self.update_song_list()
 
+    def start_video_with_countdown(self):
+        def countdown_stopped():
+            self.play_and_stop_countdown_button.config(text='Play Next Song')
+            self.countdown_stop_event.clear()
+
+        # Open the YouTube video for the current song
+        link = self.current_song_data['link']
+        self.youtube_player.start_youtube_video(link)
+
+        # If it should stop the thread then just exit the function
+        if self.countdown_stop_event.is_set():
+            countdown_stopped()
+            return
+
+        # Run the countdown, update the label every second and check if it is interrupted
+        for countdown_seconds in range(5, 0, -1):
+            self.update_current_song_label(countdown=countdown_seconds)
+            sleep(1)
+
+            if self.countdown_stop_event.is_set():
+                countdown_stopped()
+                return
+
+        # Update the label
+        self.current_song_start_time = datetime.now().strftime('%H:%M:%S')
+        self.update_current_song_label()
+
+        # Start the YouTube video by activating the fullscreen
+        self.youtube_player.click_fullscreen()
+
+        # Reset the stop command incase it was set in the meantime
+        countdown_stopped()
+
     def on_closing(self):
         # Show a confirmation dialog
-        if messagebox.askyesno("Quit", "Do you really want to quit?"):
+        if messagebox.askyesno("Quit", "Do you really want to quit? \n(This window will close shortly after the browser is closed)"):
+            self.youtube_player.stop()  # Stop the browser
             self.root.destroy()  # Close the window
 
 
 if __name__ == "__main__":
     KaraokeApp()
-    YouTubeWebdriver()
