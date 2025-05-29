@@ -2,10 +2,14 @@ import json
 import re
 from datetime import datetime
 from os import path
+import sys
 import threading
 
-import tkinter as tk
-from tkinter import messagebox
+from PyQt6.QtWidgets import (
+    QApplication, QMainWindow, QWidget, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
+    QLineEdit, QDialog, QGridLayout, QMessageBox, QScrollArea
+)
+from PyQt6.QtCore import Qt
 
 from flask import Flask, render_template_string, Response
 from queue import Queue
@@ -123,19 +127,42 @@ class VideoServer:
     """
 
 
-class KaraokeApp:
+class KaraokeApp(QMainWindow):
     def __init__(self):
+        super().__init__()
+
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #ffffff;
+                color: #000000;
+                font-family: Segoe UI, sans-serif;
+                font-size: 11pt;
+            }
+            QPushButton {
+                background-color: #f0f0f0;
+                border: 1px solid #ccc;
+                padding: 4px 8px;
+            }
+            QPushButton:hover {
+                background-color: #e0e0e0;
+            }
+            QLineEdit {
+                background-color: #ffffff;
+                border: 1px solid #ccc;
+                padding: 2px;
+            }
+            QLabel {
+                font-size: 10pt;
+            }
+        """)
+
         # Initialize the YouTube Player
         self.video_server = VideoServer()
         server_url = self.video_server.start()
-        webbrowser.open(server_url)  # Open the URL of the server in the webbrowser
+        webbrowser.open(server_url)  # Open the URL of the server in the browser
 
-        self.root = tk.Tk()
-        self.root.title("Karaoke Manager")
-        self.root.geometry("800x600")
-
-        # Set up the protocol for the window close event
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.setWindowTitle("Karaoke Manager")
+        self.resize(800, 600)
 
         # Define some basic variables
         self.song_list = []
@@ -145,39 +172,53 @@ class KaraokeApp:
         self.countdown_stop_event = threading.Event()  # This variable tells the script to try and stop the countdown
         self.countdown_thread = threading.Thread()
 
-        self.basic_font = ("Segoe UI", 11)
+        self.basic_font = "Segoe UI"
         self.re_pattern = re.compile(r'(https?://)?(www\.)?(youtube\.com)/.+')
 
         # Load the song_list from the JSON
         self.load_songs()
 
         # Create the Widgets
-        self.top_frame = tk.Frame(self.root)
-        self.top_frame.pack(pady=10)
+        main_widget = QWidget()
+        self.setCentralWidget(main_widget)
 
-        # This is the button which plays the next song or stops the countdown when a new song is started.
-        self.play_button = tk.Button(self.top_frame, text="Play Next Song", font=("Segoe UI", 15), command=self.play_next_song)
-        self.play_button.pack(side=tk.LEFT, padx=15)
+        main_layout = QVBoxLayout()
+        main_widget.setLayout(main_layout)
 
-        self.add_button = tk.Button(self.top_frame, text="Add New Song", font=("Segoe UI", 15), command=self.add_song)
-        self.add_button.pack(side=tk.LEFT, padx=15)
+        # Top control buttons
+        top_layout = QHBoxLayout()
+        self.play_button = QPushButton("Play Next Song")
+        self.play_button.clicked.connect(self.play_next_song)
+        top_layout.addWidget(self.play_button)
 
-        self.edit_button = tk.Button(self.top_frame, text="Edit Songs", font=("Segoe UI", 15), command=self.toggle_edit_mode)
-        self.edit_button.pack(side=tk.LEFT, padx=15)
+        self.add_button = QPushButton("Add New Song")
+        self.add_button.clicked.connect(self.add_song)
+        top_layout.addWidget(self.add_button)
 
-        self.current_song_label = tk.Label(self.root, text="", font=("Segoe UI", 13), fg="green")
-        self.current_song_label.pack(pady=5)
+        self.edit_button = QPushButton("Edit Songs")
+        self.edit_button.setCheckable(True)
+        self.edit_button.clicked.connect(self.toggle_edit_mode)
+        top_layout.addWidget(self.edit_button)
 
-        self.song_list_frame = tk.Frame(self.root)
-        self.song_list_frame.pack()
+        main_layout.addLayout(top_layout)
+
+        self.current_song_label = QLabel("")
+        main_layout.addWidget(self.current_song_label)
+
+        # Scrollable song list
+        self.song_list_container = QWidget()
+        self.song_list_layout = QVBoxLayout()
+        self.song_list_container.setLayout(self.song_list_layout)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(self.song_list_container)
+        main_layout.addWidget(scroll)
 
         self.song_widgets = []
+        # Create all widgets for all songs
 
-        # Create all the widgets for all the song_list
         self.update_song_list()
-
-        # Main tkinter interaction loop
-        self.root.mainloop()
 
     def load_songs(self):
         if path.exists(SONG_FILE):
@@ -189,94 +230,98 @@ class KaraokeApp:
             json.dump(self.song_list, file, indent=4)
 
     def update_song_list(self):
-        # Remove all the old song_list
+        # Clear existing widgets
         for widget in self.song_widgets:
-            widget.destroy()
+            widget.deleteLater()
         self.song_widgets.clear()
 
-        # Go through all songs in the song list and create a widget for them
+        # Remove all existing items (including spacers/stretch) from the layout
+        while self.song_list_layout.count():
+            item = self.song_list_layout.takeAt(0)
+            if item.widget():
+                item.widget().setParent(None)
+            # No need to do anything for spacers here, they are removed by takeAt()
+
         for index, song_data in enumerate(self.song_list):
-            text = f'Singer: {song_data['person']} | "{song_data['name']}" by {song_data['author']} | Link: {song_data['link']}'
+            song_row_widget = QWidget()
+            song_row_layout = QHBoxLayout(song_row_widget)
+            song_row_layout.setContentsMargins(0, 0, 0, 0)
+            song_row_layout.setSpacing(5)
+
+            text = f'Singer: {song_data["person"]} | "{song_data["name"]}" by {song_data["author"]} | Link: {song_data["link"]}'
             label_color = "green" if song_data == self.current_song_data else "black"
-            label = tk.Label(self.song_list_frame, text=text, fg=label_color, font=self.basic_font)
-            label.grid(row=index, column=0, sticky="w")
-            self.song_widgets.append(label)
+            label = QLabel(text)
+            label.setStyleSheet(f"color: {label_color}; font-size: 10pt;")
+            song_row_layout.addWidget(label, stretch=1)
 
-            # Make column 0 expand so the edit buttons are guaranteed to be displayed
-            self.song_list_frame.grid_columnconfigure(0, weight=1)
-
-            # Add more buttons in the edit mode and add them all to the song widgets
             if self.edit_mode:
-                edit_button = tk.Button(self.song_list_frame, text="Edit", command=lambda i=index: self.edit_song(i))
-                edit_button.grid(row=index, column=1)
-                del_button = tk.Button(self.song_list_frame, text="Delete", command=lambda i=index: self.delete_song(i))
-                del_button.grid(row=index, column=2)
-                up_button = tk.Button(self.song_list_frame, text="↑", command=lambda i=index: self.move_song_up(i))
-                up_button.grid(row=index, column=3)
-                down_button = tk.Button(self.song_list_frame, text="↓", command=lambda i=index: self.move_song_down(i))
-                down_button.grid(row=index, column=4)
-                self.song_widgets += [edit_button, del_button, up_button, down_button]
+                edit_button = QPushButton("Edit")
+                edit_button.clicked.connect(lambda _, i=index: self.edit_song(i))
+                song_row_layout.addWidget(edit_button)
+
+                del_button = QPushButton("Delete")
+                del_button.clicked.connect(lambda _, i=index: self.delete_song(i))
+                song_row_layout.addWidget(del_button)
+
+                up_button = QPushButton("↑")
+                up_button.clicked.connect(lambda _, i=index: self.move_song_up(i))
+                song_row_layout.addWidget(up_button)
+
+                down_button = QPushButton("↓")
+                down_button.clicked.connect(lambda _, i=index: self.move_song_down(i))
+                song_row_layout.addWidget(down_button)
+
+            self.song_list_layout.addWidget(song_row_widget)
+            self.song_widgets.append(song_row_widget)
+
+        # Add vertical stretch (placeholder) to push all content to top, only one stretch at the bottom
+        self.song_list_layout.addStretch(1)
 
     def is_valid_youtube_link(self, link):
         return bool(self.re_pattern.match(link))
 
     def open_song_input_window(self, initial_song_data=None, song_index=None):
-        # Define the width and height of the window, so it is below the y-center of the main window but centered on the x-axis of the main window
-        width = round(self.root.winfo_width() / 2)
-        height = round(self.root.winfo_height() / 2)
-        x = round(self.root.winfo_x() + 0.5 * width)
-        y = round(self.root.winfo_y() + height)
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit Song" if initial_song_data else "Add New Song")  # If there is initial data, it is in edit mode.
+        layout = QGridLayout(dialog)
 
-        # Define the window with a title according to the mode it is in (either add or edit)
-        input_window = tk.Toplevel()
-        input_window.geometry(f"{width}x{height}+{x}+{y}")
+        layout.addWidget(QLabel("Name of the person:"), 0, 0)
+        person_entry = QLineEdit()
+        layout.addWidget(person_entry, 0, 1)
 
-        # If there is initial data, it is in edit mode.
-        if initial_song_data:
-            input_window.title("Edit Song")
-        else:
-            input_window.title("Add New Song")
+        layout.addWidget(QLabel("Name of the song:"), 1, 0)
+        name_entry = QLineEdit()
+        layout.addWidget(name_entry, 1, 1)
 
-        # Define all labels and entry boxes
-        tk.Label(input_window, text="Name of the person:", font=self.basic_font).grid(row=0, column=0, sticky="w")
-        person_entry = tk.Entry(input_window, font=self.basic_font)
-        person_entry.grid(row=0, column=1, sticky="ew")
+        layout.addWidget(QLabel("Author of the song:"), 2, 0)
+        author_entry = QLineEdit()
+        layout.addWidget(author_entry, 2, 1)
 
-        tk.Label(input_window, text="Name of the song:", font=self.basic_font).grid(row=1, column=0, sticky="w")
-        name_entry = tk.Entry(input_window, font=self.basic_font)
-        name_entry.grid(row=1, column=1, sticky="ew")
+        layout.addWidget(QLabel("Link to the song:"), 3, 0)
+        link_entry = QLineEdit()
+        layout.addWidget(link_entry, 3, 1)
 
-        tk.Label(input_window, text="Author of the song:", font=self.basic_font).grid(row=2, column=0, sticky="w")
-        author_entry = tk.Entry(input_window, font=self.basic_font)
-        author_entry.grid(row=2, column=1, sticky="ew")
-
-        tk.Label(input_window, text="Link to the song:", font=self.basic_font).grid(row=3, column=0, sticky="w")
-        link_entry = tk.Entry(input_window, font=self.basic_font)
-        link_entry.grid(row=3, column=1, sticky="ew")
-
-        error_label = tk.Label(input_window, text="", fg="red", font=self.basic_font)
-        error_label.grid(row=4, columnspan=2)
-
-        # Make column 1 expand so the width of the entries is according to the window with
-        input_window.grid_columnconfigure(1, weight=1)
+        error_label = QLabel("")
+        error_label.setStyleSheet("color: red;")
+        layout.addWidget(error_label, 4, 0, 1, 2)
 
         # If data already exists use this data.
         if initial_song_data:
-            person_entry.insert(0, initial_song_data['person'])
-            name_entry.insert(0, initial_song_data['name'])
-            author_entry.insert(0, initial_song_data['author'])
-            link_entry.insert(0, initial_song_data['link'])
+            person_entry.setText(initial_song_data["person"])
+            name_entry.setText(initial_song_data["name"])
+            author_entry.setText(initial_song_data["author"])
+            link_entry.setText(initial_song_data["link"])
 
         def save():
             # Get the data of all the entries
-            person = person_entry.get()
-            name = name_entry.get()
-            author = author_entry.get()
-            link = link_entry.get()
+            person = person_entry.text()
+            name = name_entry.text()
+            author = author_entry.text()
+            link = link_entry.text()
 
             # Check for a valid link, if wrong show an error
             if not self.is_valid_youtube_link(link):
-                error_label.config(text="Invalid YouTube link. Please correct it.")
+                error_label.setText("Invalid YouTube link. Please correct it.")
                 return
 
             new_song_data = {"person": person, "name": name, "author": author, "link": link}
@@ -293,16 +338,18 @@ class KaraokeApp:
             # Save the song list and modify the displayed list
             self.save_songs()
             self.update_song_list()
+            dialog.accept()
 
-            # Destroy the input window
-            input_window.destroy()
+        save_btn = QPushButton("Save")
+        save_btn.clicked.connect(save)
+        layout.addWidget(save_btn, 5, 0, 1, 2)
 
-        tk.Button(input_window, text="Save", font=("Segoe UI", 13), command=save).grid(row=5, columnspan=2, pady=10)
+        dialog.exec()
 
     def add_song(self):
         # Disable the edit mode if it is active
         self.edit_mode = False
-        self.edit_button.config(relief=tk.RAISED)
+        self.edit_button.setChecked(False)
         self.update_song_list()
 
         # Create a new song
@@ -310,8 +357,7 @@ class KaraokeApp:
 
     def toggle_edit_mode(self):
         # This activates/deactivates the edit mode and changes the state of the button
-        self.edit_mode = not self.edit_mode
-        self.edit_button.config(relief=tk.SUNKEN if self.edit_mode else tk.RAISED)
+        self.edit_mode = self.edit_button.isChecked()
         self.update_song_list()
 
     def edit_song(self, index):
@@ -319,8 +365,10 @@ class KaraokeApp:
 
     def delete_song(self, index):
         # Ask for confirmation
-        confirm = messagebox.askyesno("Confirm Delete", f'Are you sure you want to delete "{self.song_list[index]['name']}", sung by "{self.song_list[index]['person']}"?')
-        if confirm:
+        reply = QMessageBox.question(self, "Confirm Delete",
+                                     f'Are you sure you want to delete "{self.song_list[index]["name"]}", sung by "{self.song_list[index]["person"]}"?',
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
             del self.song_list[index]
             self.save_songs()
             self.update_song_list()
@@ -346,27 +394,29 @@ class KaraokeApp:
         return None
 
     def update_current_song_label(self):
-        self.current_song_label.config(
-            text=f'"{self.current_song_data['name']}" by "{self.current_song_data['author']}" (Singer: {self.current_song_data['person']}) \nStarted at: {self.current_song_start_time}',
-            fg="green"
-        )
+        if self.current_song_data:
+            self.current_song_label.setText(
+                f'Now Playing: "{self.current_song_data["name"]}" by "{self.current_song_data["author"]}" (Singer: {self.current_song_data["person"]}) \nStarted at: {self.current_song_start_time}'
+            )
 
     def play_next_song(self):
         # When the list is empty, show an information message
         if not self.song_list:
-            messagebox.showinfo("Info", "No songs in the list.")
+            QMessageBox.information(self, "Info", "No songs in the list.")
             return
 
         # Disable the edit mode incase it is active
         self.edit_mode = False
-        self.edit_button.config(relief=tk.RAISED)
+        self.edit_button.setChecked(False)
 
         # If a song is currently being played, get its index and ask whether the song should be removed from the list or just appended at the end of the list
         if self.current_song_data is not None:
             current_index = self.get_current_song_index()
             if current_index is not None:
-                remove = messagebox.askyesno("Remove Song", f'Remove current song "{self.current_song_data['name']}", sung by "{self.current_song_data['name']}" from the list?')
-                if remove:
+                remove = QMessageBox.question(self, "Remove Song",
+                                              f'Remove current song "{self.current_song_data["name"]}"?',
+                                              QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+                if remove == QMessageBox.StandardButton.Yes:
                     del self.song_list[current_index]
                 else:
                     self.song_list.append(self.song_list.pop(current_index))
@@ -382,12 +432,18 @@ class KaraokeApp:
         self.save_songs()
         self.update_song_list()
 
-    def on_closing(self):
-        # Show a confirmation dialog
-        if messagebox.askyesno("Quit", "Do you really want to quit? \n(This window will also stop the webserver)"):
-            self.root.destroy()  # Close the window
-            exit()  # Stops the server
+    def closeEvent(self, event):
+        reply = QMessageBox.question(self, "Quit", "Do you really want to quit? \n(This will also stop the webserver)",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            event.accept()
+            sys.exit()
+        else:
+            event.ignore()
 
 
 if __name__ == "__main__":
-    KaraokeApp()
+    app = QApplication(sys.argv)
+    window = KaraokeApp()
+    window.show()
+    sys.exit(app.exec())
